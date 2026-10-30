@@ -82,3 +82,34 @@ dsh plugin --profile <profile> add /path/to/dsh-godot-live
 ## 许可
 
 MIT
+
+## 踩坑记录（都是实跑踩出来的）
+
+### 1. `InputEventMouse*.position` 是**窗口像素**，不是视口逻辑坐标
+
+本项目 `display/window/stretch/mode="canvas_items"`，视口逻辑尺寸固定 1920x1080，
+但引擎窗口可能是 1280x720。`InputEventMouseButton.position` 按**窗口像素**解释。
+
+症状：注入点击 `(950,754)` 毫无反应——死亡界面的「重新开始」点了十几次都不动。
+根因：事件落在错误位置，GUI 命中测试打空。
+
+修复：注入前按 `window_size / viewport_visible_rect` 逐轴缩放（`_viewport_to_window`）。
+修复后同一个逻辑坐标 `(1604,164)` 成功点中胸腔界面的「关闭」按钮。
+
+### 2. GUI 按钮需要成对事件 + 先 hover
+
+只发 down/up 时部分控件不动。现在固定顺序：`mouse_motion`（带 `button_mask`）→ `mouse_down` → `mouse_up`。
+
+### 3. `--` 之后的参数顺序
+
+`godot --path P --log-file X --script S -- --port=8711` —— `--log-file` 必须写在 `--` **之前**，
+否则会被当成 runtime 的用户参数吃掉。
+
+## 已验证
+
+- 侧栏「Godot」→ 主面板实时画面（20fps，960x540）
+- 点画面角色走过去（点击移动生效，画面 + 摄像机跟随）
+- 输入动作：`cavity`(Tab) 打开胸腔界面、`esc` 关闭
+- 战斗推进：血量 148 → 42 → 死亡界面
+- GUI 按钮准确命中（修复坐标后）
+- 插件卸载时引擎进程被回收，无孤儿进程
