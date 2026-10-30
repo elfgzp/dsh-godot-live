@@ -364,24 +364,31 @@ func _inject_input(d: Dictionary) -> Dictionary:
 		"actions":
 			return {"ok": true, "available": _available_actions()}
 		"click":
-			# 屏幕坐标点击（相对 viewport 逻辑坐标，非窗口像素）
-			var pos := Vector2(float(d.get("x", 0)), float(d.get("y", 0)))
+			# 坐标口径：调用方给的是**视口逻辑坐标**（1920x1080），
+			# 但 InputEvent 的 position 走的是**窗口像素**（1280x720）。
+			# 本项目 stretch=canvas_items/expand，两者差一个缩放比 —— 
+			# 不做转换的话，GUI 按钮永远点不到（踩过：点「重新开始」毫无反应）。
+			var pos := _viewport_to_window(Vector2(float(d.get("x", 0)), float(d.get("y", 0))))
 			var button := int(d.get("button", MOUSE_BUTTON_LEFT))
-			var press_ev := InputEventMouseButton.new()
-			press_ev.button_index = button
-			press_ev.pressed = true
-			press_ev.position = pos
-			press_ev.global_position = pos
-			Input.parse_input_event(press_ev)
-			var rel_ev := InputEventMouseButton.new()
-			rel_ev.button_index = button
-			rel_ev.pressed = false
-			rel_ev.position = pos
-			rel_ev.global_position = pos
-			Input.parse_input_event(rel_ev)
-			return {"ok": true, "clicked": [pos.x, pos.y], "button": button}
+			# GUI 需要成对事件：先在目标上移动（Button 的高亮/pressed 依赖 hover 状态），
+			# 再按下、再抬起。少了 move，部分控件的 hover 判定不会更新。
+			var mv := InputEventMouseMotion.new()
+			mv.position = pos
+			mv.global_position = pos
+			mv.button_mask = MOUSE_BUTTON_MASK_LEFT
+			Input.parse_input_event(mv)
+			for pressed in [true, false]:
+				var ev := InputEventMouseButton.new()
+				ev.button_index = button
+				ev.pressed = pressed
+				ev.position = pos
+				ev.global_position = pos
+				ev.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+				Input.parse_input_event(ev)
+			return {"ok": true, "clicked": [pos.x, pos.y], "button": button,
+				"space": "window"}
 		"move":
-			var pos2 := Vector2(float(d.get("x", 0)), float(d.get("y", 0)))
+			var pos2 := _viewport_to_window(Vector2(float(d.get("x", 0)), float(d.get("y", 0))))
 			var mv := InputEventMouseMotion.new()
 			mv.position = pos2
 			mv.global_position = pos2
@@ -424,3 +431,18 @@ func _release_after(action_name: String, ms: int) -> void:
 	# Timer 需要进场景树才会走；挂到 root 上，不污染游戏场景
 	root.add_child(timer)
 	timer.start()
+
+## 视口逻辑坐标 → 窗口像素坐标。
+##
+## 本项目 `display/window/stretch/mode="canvas_items"` + aspect="expand"，
+## 视口逻辑尺寸固定 1920x1080，而实际窗口可能是 1280x720 等。
+## `InputEventMouse*` 的 position 用窗口像素，GUI 命中测试也按窗口算，
+## 所以注入前必须换算；否则点击会落在错误位置（症状：按钮点了没反应）。
+func _viewport_to_window(pos: Vector2) -> Vector2:
+	var win_size := Vector2(DisplayServer.window_get_size())
+	var vp_size := root.get_visible_rect().size
+	if vp_size.x <= 0.0 or vp_size.y <= 0.0:
+		return pos
+	# expand 模式下宽高各自独立缩放
+	var scale := Vector2(win_size.x / vp_size.x, win_size.y / vp_size.y)
+	return (pos * scale).round()
