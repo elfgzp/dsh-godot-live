@@ -1,0 +1,33 @@
+# dsh-godot-live bundle patch
+#
+# 一行 Host 插件负责一切：
+#   - 启动 / 停止原生 Godot 进程（保持 Forward+ / GDExtension / autoload 原样）
+#   - 把 Godot 端 MJPEG 流反代到 DSH 同源路径
+#   - 提供 godot_live_* 模型工具（状态 / 启停 / 输入注入 / 抓帧）
+# 浏览器半区经 package.json 的 `dsh.client` 声明，
+# 注册 sidebar.panellist（侧栏图标）与 main（主列面板）两个座位。
+- insert:
+    - id: godot-live
+      name: dsh-godot-live
+      inject: [webServer, subprocess, agents]
+      config:
+        # Godot 可执行文件。留空 = 自动探测
+        #（GODOT 环境变量 → /Applications/Godot.app/... → PATH）
+        godotBin: ""
+        # 引擎内部串流端口，仅绑 127.0.0.1。被占用时改这里。
+        streamPort: 8711
+        # 推流帧率。20 在 960 宽下 CPU 占用很低。
+        fps: 20
+        # 推流宽度（保持纵横比）。0 = 原分辨率。
+        # 实测 960 宽时抓帧 ~1ms、JPEG 编码 ~5.6ms、每帧 ~40KB。
+        width: 960
+        # JPEG 质量 0.1~1.0
+        quality: 0.7
+        # 引擎窗口分辨率。降低可显著提升抓帧速度（1280x720 抓帧 4.7ms，1920x1080 是 7.1ms）。
+        resolution: "1280x720"
+        # 启动后把窗口移出屏幕并去掉边框，尽量不打扰用户。
+        hideWindow: true
+        # 主场景覆盖；留空 = 读 project.godot 的 application/run/main_scene
+        scene: ""
+        # 启动等待上限（毫秒）
+        readyTimeoutMs: 20000
